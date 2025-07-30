@@ -218,6 +218,19 @@ class ImapClient:
             self.logger.error(f"Error moving message {message_id} to folder '{folder}': {e}")
             return False
             
+    def move_message(self, message_id: str, destination_folder: str) -> bool:
+        """
+        Move a message from current folder to another folder.
+        
+        Args:
+            message_id: The ID of the message to move
+            destination_folder: The destination folder name
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        return self.move_to_folder(message_id, destination_folder)
+            
     def delete_message(self, message_id: str) -> bool:
         """
         Delete a message.
