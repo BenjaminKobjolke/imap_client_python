@@ -31,6 +31,46 @@ class EmailMessage:
     attachments: List[Attachment]
     raw_message: Message
 
+    def get_body(self, content_type: str = "text/plain") -> Optional[str]:
+        """
+        Extract the email body content.
+        
+        Args:
+            content_type: The content type to extract ('text/plain' or 'text/html')
+            
+        Returns:
+            str: The email body content or None if not found
+        """
+        if self.raw_message.is_multipart():
+            for part in self.raw_message.walk():
+                if part.get_content_type() == content_type:
+                    payload = part.get_payload(decode=True)
+                    if payload:
+                        try:
+                            # Try to decode with the charset specified in the message
+                            charset = part.get_content_charset() or 'utf-8'
+                            return payload.decode(charset)
+                        except (UnicodeDecodeError, LookupError):
+                            # Fallback to utf-8 if charset fails
+                            try:
+                                return payload.decode('utf-8')
+                            except UnicodeDecodeError:
+                                # Last resort: decode with errors='replace'
+                                return payload.decode('utf-8', errors='replace')
+        else:
+            if self.raw_message.get_content_type() == content_type:
+                payload = self.raw_message.get_payload(decode=True)
+                if payload:
+                    try:
+                        charset = self.raw_message.get_content_charset() or 'utf-8'
+                        return payload.decode(charset)
+                    except (UnicodeDecodeError, LookupError):
+                        try:
+                            return payload.decode('utf-8')
+                        except UnicodeDecodeError:
+                            return payload.decode('utf-8', errors='replace')
+        return None
+
     @classmethod
     def from_bytes(cls, message_id: str, message_data: bytes, logger: Optional[logging.Logger] = None) -> 'EmailMessage':
         """

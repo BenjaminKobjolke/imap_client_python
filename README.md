@@ -55,6 +55,11 @@ if client.connect():
         print(f"From: {email_message.from_address}")
         print(f"Subject: {email_message.subject}")
         
+        # Get email body
+        body_text = email_message.get_body()
+        if body_text:
+            print(f"Body: {body_text[:100]}...")  # Show first 100 chars
+        
         # Process attachments
         for attachment in email_message.attachments:
             print(f"Attachment: {attachment.filename}")
