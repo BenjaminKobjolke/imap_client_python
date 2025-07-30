@@ -14,15 +14,17 @@ A simple and reusable IMAP client library for Python that makes it easy to work 
 
 ## Installation
 
+Install from GitHub:
+
 ```bash
-pip install imap-client-lib
+pip install git+https://github.com/BenjaminKobjolke/imap_client_python.git
 ```
 
-Or install from source:
+Or clone and install from source:
 
 ```bash
-git clone https://github.com/yourusername/imap-client-lib.git
-cd imap-client-lib
+git clone https://github.com/BenjaminKobjolke/imap_client_python.git
+cd imap_client_python
 pip install .
 ```
 
