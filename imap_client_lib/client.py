@@ -120,6 +120,18 @@ class ImapClient:
             List[Tuple[str, EmailMessage]]: List of message IDs and parsed email messages
         """
         return self.get_messages(['UNSEEN'], 'INBOX')
+        
+    def get_all_messages(self, folder: str = 'INBOX') -> List[Tuple[str, EmailMessage]]:
+        """
+        Get all messages from a specific folder.
+        
+        Args:
+            folder: The folder to get messages from (default: 'INBOX')
+            
+        Returns:
+            List[Tuple[str, EmailMessage]]: List of message IDs and parsed email messages
+        """
+        return self.get_messages(['ALL'], folder)
             
     def mark_as_read(self, message_id: str) -> bool:
         """
