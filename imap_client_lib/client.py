@@ -5,6 +5,11 @@ from typing import List, Optional, Tuple, Callable
 import os
 from pathlib import Path
 import logging
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.base import MIMEBase
+from email import encoders
 
 from imapclient import IMAPClient
 
@@ -370,3 +375,115 @@ class ImapClient:
             
         finally:
             self.disconnect()
+            
+    def forward_email(self, email_message: EmailMessage, to_addresses: List[str], 
+                     new_subject: Optional[str] = None, smtp_server: Optional[str] = None, 
+                     smtp_port: int = 587, smtp_username: Optional[str] = None, 
+                     smtp_password: Optional[str] = None, additional_message: str = "") -> bool:
+        """
+        Forward an email with an optional modified subject.
+        
+        Args:
+            email_message: The EmailMessage to forward
+            to_addresses: List of email addresses to forward to
+            new_subject: New subject line (if None, uses "Fwd: " + original subject)
+            smtp_server: SMTP server to use (if None, attempts to derive from account)
+            smtp_port: SMTP port (default: 587)
+            smtp_username: SMTP username (if None, uses account username)
+            smtp_password: SMTP password (if None, uses account password)
+            additional_message: Additional message to prepend to the forwarded email
+            
+        Returns:
+            bool: True if forwarding was successful, False otherwise
+        """
+        try:
+            # Prepare subject
+            if new_subject is None:
+                new_subject = f"Fwd: {email_message.subject}"
+            
+            # Use account credentials if SMTP credentials not provided
+            if smtp_username is None:
+                smtp_username = self.account.username
+            if smtp_password is None:
+                smtp_password = self.account.password
+                
+            # Try to derive SMTP server from IMAP server if not provided
+            if smtp_server is None:
+                smtp_server = self.account.server.replace('imap', 'smtp')
+                self.logger.info(f"Derived SMTP server: {smtp_server}")
+            
+            # Create multipart message
+            msg = MIMEMultipart()
+            msg['From'] = smtp_username
+            msg['To'] = ', '.join(to_addresses)
+            msg['Subject'] = new_subject
+            
+            # Get original email body
+            original_body_text = email_message.get_body('text/plain') or ""
+            original_body_html = email_message.get_body('text/html') or ""
+            
+            # Create forwarded message content
+            forward_header = f"""
+---------- Forwarded message ----------
+From: {email_message.from_address}
+Date: {email_message.date}
+Subject: {email_message.subject}
+
+"""
+            
+            # Combine additional message with forwarded content
+            if additional_message:
+                forward_content = f"{additional_message}\n\n{forward_header}{original_body_text}"
+            else:
+                forward_content = f"{forward_header}{original_body_text}"
+            
+            # Add text content
+            msg.attach(MIMEText(forward_content, 'plain'))
+            
+            # Add HTML content if available
+            if original_body_html:
+                html_content = f"""
+                <p>{additional_message.replace(chr(10), '<br>')}</p>
+                <div>
+                <p>---------- Forwarded message ----------<br>
+                From: {email_message.from_address}<br>
+                Date: {email_message.date}<br>
+                Subject: {email_message.subject}</p>
+                <div>{original_body_html}</div>
+                </div>
+                """ if additional_message else f"""
+                <div>
+                <p>---------- Forwarded message ----------<br>
+                From: {email_message.from_address}<br>
+                Date: {email_message.date}<br>
+                Subject: {email_message.subject}</p>
+                <div>{original_body_html}</div>
+                </div>
+                """
+                msg.attach(MIMEText(html_content, 'html'))
+            
+            # Forward attachments
+            for attachment in email_message.attachments:
+                part = MIMEBase('application', 'octet-stream')
+                part.set_payload(attachment.data)
+                encoders.encode_base64(part)
+                part.add_header(
+                    'Content-Disposition',
+                    f'attachment; filename= {attachment.filename}'
+                )
+                msg.attach(part)
+                self.logger.debug(f"Attached file: {attachment.filename}")
+            
+            # Send email via SMTP
+            self.logger.info(f"Connecting to SMTP server: {smtp_server}:{smtp_port}")
+            with smtplib.SMTP(smtp_server, smtp_port) as server:
+                server.starttls()
+                server.login(smtp_username, smtp_password)
+                server.send_message(msg)
+                
+            self.logger.info(f"Successfully forwarded email to: {', '.join(to_addresses)}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error forwarding email: {e}")
+            return False

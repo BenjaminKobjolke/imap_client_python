@@ -178,6 +178,7 @@ The `EmailMessage` class contains:
 - `date`: Email date
 - `attachments`: List of `Attachment` objects
 - `raw_message`: Raw email.message.Message object
+- `get_body(content_type="text/plain")`: Extract email body content (text/plain or text/html)
 
 ### Attachment
 
