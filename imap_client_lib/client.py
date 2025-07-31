@@ -380,7 +380,7 @@ class ImapClient:
                      new_subject: Optional[str] = None, smtp_server: Optional[str] = None, 
                      smtp_port: int = 587, smtp_username: Optional[str] = None, 
                      smtp_password: Optional[str] = None, sender_email: Optional[str] = None,
-                     additional_message: str = "") -> bool:
+                     bcc_addresses: Optional[List[str]] = None, additional_message: str = "") -> bool:
         """
         Forward an email with an optional modified subject.
         
@@ -393,6 +393,7 @@ class ImapClient:
             smtp_username: SMTP username (if None, uses account username)
             smtp_password: SMTP password (if None, uses account password)
             sender_email: Fully-qualified sender email address (if None, uses smtp_username)
+            bcc_addresses: List of email addresses to BCC (blind carbon copy)
             additional_message: Additional message to prepend to the forwarded email
             
         Returns:
@@ -429,6 +430,8 @@ class ImapClient:
                 
             msg['From'] = sender_email
             msg['To'] = ', '.join(to_addresses)
+            if bcc_addresses:
+                msg['Bcc'] = ', '.join(bcc_addresses)
             msg['Subject'] = new_subject
             
             # Get original email body
@@ -549,9 +552,20 @@ Subject: {email_message.subject}
             with smtplib.SMTP(smtp_server, smtp_port) as server:
                 server.starttls()
                 server.login(smtp_username, smtp_password)
-                server.send_message(msg)
                 
-            self.logger.info(f"Successfully forwarded email to: {', '.join(to_addresses)}")
+                # Prepare all recipients (TO + BCC)
+                all_recipients = to_addresses.copy()
+                if bcc_addresses:
+                    all_recipients.extend(bcc_addresses)
+                
+                # Send to all recipients
+                server.send_message(msg, to_addrs=all_recipients)
+                
+            # Log successful forwarding
+            log_message = f"Successfully forwarded email to: {', '.join(to_addresses)}"
+            if bcc_addresses:
+                log_message += f" (BCC: {', '.join(bcc_addresses)})"
+            self.logger.info(log_message)
             return True
             
         except Exception as e:
