@@ -468,17 +468,29 @@ Subject: {email_message.subject}
                 """
                 msg.attach(MIMEText(html_content, 'html'))
             
-            # Forward attachments
+            # Forward attachments and inline images
             for attachment in email_message.attachments:
-                part = MIMEBase('application', 'octet-stream')
-                part.set_payload(attachment.data)
-                encoders.encode_base64(part)
-                part.add_header(
-                    'Content-Disposition',
-                    f'attachment; filename= {attachment.filename}'
-                )
-                msg.attach(part)
-                self.logger.debug(f"Attached file: {attachment.filename}")
+                if attachment.is_inline and attachment.content_id:
+                    # Handle inline images
+                    main_type, sub_type = attachment.content_type.split('/', 1)
+                    part = MIMEBase(main_type, sub_type)
+                    part.set_payload(attachment.data)
+                    encoders.encode_base64(part)
+                    part.add_header('Content-Disposition', 'inline', filename=attachment.filename)
+                    part.add_header('Content-ID', attachment.content_id)
+                    msg.attach(part)
+                    self.logger.debug(f"Attached inline image: {attachment.filename} with Content-ID: {attachment.content_id}")
+                else:
+                    # Handle regular attachments
+                    part = MIMEBase('application', 'octet-stream')
+                    part.set_payload(attachment.data)
+                    encoders.encode_base64(part)
+                    part.add_header(
+                        'Content-Disposition',
+                        f'attachment; filename= {attachment.filename}'
+                    )
+                    msg.attach(part)
+                    self.logger.debug(f"Attached file: {attachment.filename}")
             
             # Send email via SMTP
             self.logger.info(f"Connecting to SMTP server: {smtp_server}:{smtp_port}")

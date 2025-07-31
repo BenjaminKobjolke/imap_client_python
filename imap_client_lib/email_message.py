@@ -17,6 +17,8 @@ class Attachment:
     filename: str
     content_type: str
     data: bytes
+    content_id: Optional[str] = None
+    is_inline: bool = False
 
 
 @dataclass
@@ -128,12 +130,14 @@ class EmailMessage:
         for part in msg.walk():
             content_disposition = part.get_content_disposition()
             content_type = part.get_content_type()
+            content_id = part.get('Content-ID')
             
             if logger:
-                logger.debug(f"Message part - Content-Type: '{content_type}', Content-Disposition: '{content_disposition}'")
+                logger.debug(f"Message part - Content-Type: '{content_type}', Content-Disposition: '{content_disposition}', Content-ID: '{content_id}'")
                 
             filename = part.get_filename()
             
+            # Handle regular attachments
             if content_disposition == 'attachment' and filename:
                 if logger:
                     logger.debug(f"Found attachment - Filename: '{filename}', Content-Type: '{content_type}'")
@@ -147,12 +151,43 @@ class EmailMessage:
                     attachment = Attachment(
                         filename=filename,
                         content_type=content_type,
-                        data=data
+                        data=data,
+                        content_id=content_id,
+                        is_inline=False
                     )
                     attachments.append(attachment)
                 else:
                     if logger:
                         logger.debug("Attachment has no data, skipping")
+            
+            # Handle inline images
+            elif content_disposition == 'inline' or (content_id and content_type.startswith('image/')):
+                if logger:
+                    logger.debug(f"Found inline image - Content-Type: '{content_type}', Content-ID: '{content_id}'")
+                
+                data = part.get_payload(decode=True)
+                
+                if data:
+                    # Generate filename if not provided
+                    if not filename:
+                        extension = content_type.split('/')[-1] if '/' in content_type else 'bin'
+                        filename = f"inline_image.{extension}"
+                    
+                    if logger:
+                        logger.debug(f"Inline image data size: {len(data)} bytes, filename: '{filename}'")
+                    
+                    attachment = Attachment(
+                        filename=filename,
+                        content_type=content_type,
+                        data=data,
+                        content_id=content_id,
+                        is_inline=True
+                    )
+                    attachments.append(attachment)
+                else:
+                    if logger:
+                        logger.debug("Inline image has no data, skipping")
+            
             elif filename and not content_disposition:
                 # Some emails don't set content_disposition but still have attachments
                 if logger:
@@ -168,7 +203,9 @@ class EmailMessage:
                     attachment = Attachment(
                         filename=filename,
                         content_type=content_type,
-                        data=data
+                        data=data,
+                        content_id=content_id,
+                        is_inline=False
                     )
                     attachments.append(attachment)
         
