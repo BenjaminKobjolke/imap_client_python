@@ -418,8 +418,15 @@ class ImapClient:
                 smtp_server = self.account.server.replace('imap', 'smtp')
                 self.logger.info(f"Derived SMTP server: {smtp_server}")
             
-            # Create multipart message
-            msg = MIMEMultipart()
+            # Check if we have inline images to determine message structure
+            has_inline_images = any(att.is_inline and att.content_id for att in email_message.attachments)
+            
+            # Create multipart message - use 'related' if we have inline images
+            if has_inline_images:
+                msg = MIMEMultipart('related')
+            else:
+                msg = MIMEMultipart()
+                
             msg['From'] = sender_email
             msg['To'] = ', '.join(to_addresses)
             msg['Subject'] = new_subject
@@ -437,17 +444,19 @@ Subject: {email_message.subject}
 
 """
             
-            # Combine additional message with forwarded content
-            if additional_message:
-                forward_content = f"{additional_message}\n\n{forward_header}{original_body_text}"
-            else:
-                forward_content = f"{forward_header}{original_body_text}"
-            
-            # Add text content
-            msg.attach(MIMEText(forward_content, 'plain'))
-            
-            # Add HTML content if available
-            if original_body_html:
+            # If we have both text and HTML with inline images, create alternative structure
+            if has_inline_images and original_body_html:
+                # Create a multipart/alternative container for text and HTML versions
+                alternative = MIMEMultipart('alternative')
+                
+                # Add text content
+                if additional_message:
+                    forward_content = f"{additional_message}\n\n{forward_header}{original_body_text}"
+                else:
+                    forward_content = f"{forward_header}{original_body_text}"
+                alternative.attach(MIMEText(forward_content, 'plain'))
+                
+                # Add HTML content
                 html_content = f"""
                 <p>{additional_message.replace(chr(10), '<br>')}</p>
                 <div>
@@ -466,7 +475,42 @@ Subject: {email_message.subject}
                 <div>{original_body_html}</div>
                 </div>
                 """
-                msg.attach(MIMEText(html_content, 'html'))
+                alternative.attach(MIMEText(html_content, 'html'))
+                
+                # Attach the alternative part to the main message
+                msg.attach(alternative)
+            else:
+                # Simple structure for emails without inline images
+                # Combine additional message with forwarded content
+                if additional_message:
+                    forward_content = f"{additional_message}\n\n{forward_header}{original_body_text}"
+                else:
+                    forward_content = f"{forward_header}{original_body_text}"
+                
+                # Add text content
+                msg.attach(MIMEText(forward_content, 'plain'))
+                
+                # Add HTML content if available
+                if original_body_html:
+                    html_content = f"""
+                    <p>{additional_message.replace(chr(10), '<br>')}</p>
+                    <div>
+                    <p>---------- Forwarded message ----------<br>
+                    From: {email_message.from_address}<br>
+                    Date: {email_message.date}<br>
+                    Subject: {email_message.subject}</p>
+                    <div>{original_body_html}</div>
+                    </div>
+                    """ if additional_message else f"""
+                    <div>
+                    <p>---------- Forwarded message ----------<br>
+                    From: {email_message.from_address}<br>
+                    Date: {email_message.date}<br>
+                    Subject: {email_message.subject}</p>
+                    <div>{original_body_html}</div>
+                    </div>
+                    """
+                    msg.attach(MIMEText(html_content, 'html'))
             
             # Forward attachments and inline images
             for attachment in email_message.attachments:
@@ -477,9 +521,17 @@ Subject: {email_message.subject}
                     part.set_payload(attachment.data)
                     encoders.encode_base64(part)
                     part.add_header('Content-Disposition', 'inline', filename=attachment.filename)
-                    part.add_header('Content-ID', attachment.content_id)
+                    
+                    # Ensure Content-ID is properly formatted with angle brackets
+                    content_id = attachment.content_id
+                    if not content_id.startswith('<'):
+                        content_id = f'<{content_id}>'
+                    if not content_id.endswith('>'):
+                        content_id = f'{content_id[:-1]}>' if content_id.endswith('>') else f'{content_id}>'
+                    
+                    part.add_header('Content-ID', content_id)
                     msg.attach(part)
-                    self.logger.debug(f"Attached inline image: {attachment.filename} with Content-ID: {attachment.content_id}")
+                    self.logger.debug(f"Attached inline image: {attachment.filename} with Content-ID: {content_id}")
                 else:
                     # Handle regular attachments
                     part = MIMEBase('application', 'octet-stream')
