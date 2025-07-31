@@ -379,7 +379,8 @@ class ImapClient:
     def forward_email(self, email_message: EmailMessage, to_addresses: List[str], 
                      new_subject: Optional[str] = None, smtp_server: Optional[str] = None, 
                      smtp_port: int = 587, smtp_username: Optional[str] = None, 
-                     smtp_password: Optional[str] = None, additional_message: str = "") -> bool:
+                     smtp_password: Optional[str] = None, sender_email: Optional[str] = None,
+                     additional_message: str = "") -> bool:
         """
         Forward an email with an optional modified subject.
         
@@ -391,6 +392,7 @@ class ImapClient:
             smtp_port: SMTP port (default: 587)
             smtp_username: SMTP username (if None, uses account username)
             smtp_password: SMTP password (if None, uses account password)
+            sender_email: Fully-qualified sender email address (if None, uses smtp_username)
             additional_message: Additional message to prepend to the forwarded email
             
         Returns:
@@ -407,6 +409,10 @@ class ImapClient:
             if smtp_password is None:
                 smtp_password = self.account.password
                 
+            # Use sender_email if provided, otherwise use smtp_username
+            if sender_email is None:
+                sender_email = smtp_username
+                
             # Try to derive SMTP server from IMAP server if not provided
             if smtp_server is None:
                 smtp_server = self.account.server.replace('imap', 'smtp')
@@ -414,7 +420,7 @@ class ImapClient:
             
             # Create multipart message
             msg = MIMEMultipart()
-            msg['From'] = smtp_username
+            msg['From'] = sender_email
             msg['To'] = ', '.join(to_addresses)
             msg['Subject'] = new_subject
             
