@@ -71,13 +71,15 @@ class ImapClient:
             finally:
                 self.client = None
                 
-    def get_messages(self, search_criteria: List[str] = None, folder: str = 'INBOX') -> List[Tuple[str, EmailMessage]]:
+    def get_messages(self, search_criteria: List[str] = None, folder: str = 'INBOX', 
+                    limit: Optional[int] = None) -> List[Tuple[str, EmailMessage]]:
         """
         Get messages from a folder based on search criteria.
         
         Args:
             search_criteria: IMAP search criteria (default: ['UNSEEN'] for unread messages)
             folder: The folder to search in (default: 'INBOX')
+            limit: Maximum number of messages to return (most recent first, default: unlimited)
             
         Returns:
             List[Tuple[str, EmailMessage]]: List of message IDs and parsed email messages
@@ -102,6 +104,14 @@ class ImapClient:
                 return []
                 
             self.logger.info(f"Found {len(message_ids)} messages")
+            
+            # Sort message IDs in descending order (most recent first)
+            message_ids = sorted(message_ids, reverse=True)
+            
+            # Apply limit if specified
+            if limit is not None and limit > 0:
+                message_ids = message_ids[:limit]
+                self.logger.info(f"Limited to {len(message_ids)} most recent messages")
             
             # Fetch message data
             messages = []
@@ -128,17 +138,18 @@ class ImapClient:
         """
         return self.get_messages(['UNSEEN'], 'INBOX')
         
-    def get_all_messages(self, folder: str = 'INBOX') -> List[Tuple[str, EmailMessage]]:
+    def get_all_messages(self, folder: str = 'INBOX', limit: int = 100) -> List[Tuple[str, EmailMessage]]:
         """
-        Get all messages from a specific folder.
+        Get all messages from a specific folder (most recent first).
         
         Args:
             folder: The folder to get messages from (default: 'INBOX')
+            limit: Maximum number of messages to return (default: 100, set to None for unlimited)
             
         Returns:
             List[Tuple[str, EmailMessage]]: List of message IDs and parsed email messages
         """
-        return self.get_messages(['ALL'], folder)
+        return self.get_messages(['ALL'], folder, limit)
             
     def mark_as_read(self, message_id: str) -> bool:
         """
