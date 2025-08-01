@@ -1,7 +1,7 @@
 """
 IMAP client for connecting to email servers and retrieving messages.
 """
-from typing import List, Optional, Tuple, Callable
+from typing import List, Optional, Tuple, Callable, Dict
 import os
 from pathlib import Path
 import logging
@@ -10,6 +10,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.base import MIMEBase
 from email import encoders
+import email
+from email.message import Message
 
 from imapclient import IMAPClient
 
@@ -182,13 +184,15 @@ class ImapClient:
             self.logger.error(f"Error marking message {message_id} as unread: {e}")
             return False
             
-    def move_to_folder(self, message_id: str, folder: str) -> bool:
+    def move_to_folder(self, message_id: str, folder: str, 
+                      custom_headers: Optional[Dict[str, str]] = None) -> bool:
         """
         Move a message to a different folder.
         
         Args:
             message_id: The ID of the message to move
             folder: The destination folder
+            custom_headers: Optional dictionary of custom headers to add during move
             
         Returns:
             bool: True if successful, False otherwise
@@ -200,6 +204,10 @@ class ImapClient:
         if not folder:
             self.logger.debug(f"No move folder specified for message {message_id}, skipping move")
             return True
+        
+        # If custom headers are provided, use the header-aware move function
+        if custom_headers:
+            return self.move_with_headers(message_id, folder, custom_headers)
             
         try:
             # Check if folder exists
@@ -223,18 +231,110 @@ class ImapClient:
             self.logger.error(f"Error moving message {message_id} to folder '{folder}': {e}")
             return False
             
-    def move_message(self, message_id: str, destination_folder: str) -> bool:
+    def move_message(self, message_id: str, destination_folder: str, 
+                    custom_headers: Optional[Dict[str, str]] = None) -> bool:
         """
         Move a message from current folder to another folder.
         
         Args:
             message_id: The ID of the message to move
             destination_folder: The destination folder name
+            custom_headers: Optional dictionary of custom headers to add during move
             
         Returns:
             bool: True if successful, False otherwise
         """
-        return self.move_to_folder(message_id, destination_folder)
+        return self.move_to_folder(message_id, destination_folder, custom_headers)
+    
+    def move_with_headers(self, message_id: str, destination_folder: str, 
+                         custom_headers: Dict[str, str]) -> bool:
+        """
+        Move a message to a different folder while adding custom headers.
+        
+        This function fetches the original message, adds custom headers,
+        and recreates it in the destination folder before deleting the original.
+        
+        Args:
+            message_id: The ID of the message to move
+            destination_folder: The destination folder
+            custom_headers: Dictionary of custom headers to add (key: value pairs)
+            
+        Returns:
+            bool: True if successful, False otherwise
+        """
+        if not self.client:
+            self.logger.error("Not connected to IMAP server")
+            return False
+            
+        if not destination_folder:
+            self.logger.debug(f"No move folder specified for message {message_id}, skipping move")
+            return True
+            
+        if not custom_headers:
+            self.logger.debug("No custom headers provided, using regular move")
+            return self.move_to_folder(message_id, destination_folder)
+            
+        try:
+            # Get current folder name
+            current_folder = self.client.folder_status('INBOX')[b'UIDNEXT']  # This is just to ensure we're in a folder
+            
+            # Fetch the original message
+            self.logger.debug(f"Fetching message {message_id} for header modification")
+            raw_message_data = self.client.fetch([int(message_id)], ['BODY.PEEK[]', 'FLAGS', 'INTERNALDATE'])
+            
+            if int(message_id) not in raw_message_data:
+                self.logger.error(f"Message {message_id} not found")
+                return False
+                
+            message_info = raw_message_data[int(message_id)]
+            original_message_bytes = message_info[b'BODY[]']
+            original_flags = message_info[b'FLAGS']
+            original_date = message_info[b'INTERNALDATE']
+            
+            # Parse the email message
+            parsed_message = email.message_from_bytes(original_message_bytes)
+            
+            # Add custom headers
+            for header_name, header_value in custom_headers.items():
+                self.logger.debug(f"Adding custom header: {header_name}: {header_value}")
+                parsed_message[header_name] = header_value
+            
+            # Convert back to bytes
+            modified_message_bytes = parsed_message.as_bytes()
+            
+            # Check if destination folder exists
+            folders = self.client.list_folders()
+            folder_names = [f[2] for f in folders]
+            
+            if destination_folder not in folder_names:
+                self.logger.warning(f"Folder '{destination_folder}' does not exist, attempting to create it")
+                try:
+                    self.client.create_folder(destination_folder)
+                    self.logger.info(f"Created folder '{destination_folder}'")
+                except Exception as e:
+                    self.logger.error(f"Error creating folder '{destination_folder}': {e}")
+                    return False
+            
+            # Append the modified message to destination folder
+            self.logger.debug(f"Appending modified message to folder '{destination_folder}'")
+            append_result = self.client.append(destination_folder, modified_message_bytes, 
+                                             flags=original_flags, msg_time=original_date)
+            
+            if append_result:
+                # Delete the original message
+                self.logger.debug(f"Deleting original message {message_id}")
+                self.client.delete_messages([int(message_id)])
+                self.client.expunge()
+                
+                self.logger.info(f"Successfully moved message {message_id} to folder '{destination_folder}' with custom headers")
+                return True
+            else:
+                self.logger.error(f"Failed to append modified message to folder '{destination_folder}'")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error moving message {message_id} with headers to folder '{destination_folder}': {e}")
+            return False
             
     def delete_message(self, message_id: str) -> bool:
         """
