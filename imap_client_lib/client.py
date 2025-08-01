@@ -694,7 +694,7 @@ Subject: {email_message.subject}
                    from_email: Optional[str] = None, cc_addresses: Optional[List[str]] = None,
                    bcc_addresses: Optional[List[str]] = None, custom_headers: Optional[Dict[str, str]] = None,
                    content_type: str = "text/plain", attachments: Optional[List[Attachment]] = None,
-                   draft_folder: str = "Drafts") -> bool:
+                   draft_folder: str = "Drafts", mark_as_unread: bool = True) -> bool:
         """
         Save a draft email to the drafts folder.
         
@@ -709,6 +709,7 @@ Subject: {email_message.subject}
             content_type: Content type ("text/plain" or "text/html")
             attachments: List of Attachment objects to include
             draft_folder: Name of the drafts folder (default: "Drafts")
+            mark_as_unread: Whether to mark the draft as unread (default: True)
             
         Returns:
             bool: True if draft was saved successfully, False otherwise
@@ -818,9 +819,14 @@ Subject: {email_message.subject}
             # Convert message to bytes
             message_bytes = msg.as_bytes()
             
-            # Append draft to folder with \Draft flag
-            self.logger.debug(f"Saving draft to folder '{draft_folder}'")
-            append_result = self.client.append(draft_folder, message_bytes, flags=[b'\\Draft'])
+            # Prepare flags for the draft
+            flags = [b'\\Draft']
+            if not mark_as_unread:
+                flags.append(b'\\Seen')
+            
+            # Append draft to folder with appropriate flags
+            self.logger.debug(f"Saving draft to folder '{draft_folder}' with flags: {flags}")
+            append_result = self.client.append(draft_folder, message_bytes, flags=flags)
             
             if append_result:
                 self.logger.info(f"Successfully saved draft to folder '{draft_folder}'")
@@ -837,7 +843,7 @@ Subject: {email_message.subject}
                     from_email: Optional[str] = None, cc_addresses: Optional[List[str]] = None,
                     bcc_addresses: Optional[List[str]] = None, custom_headers: Optional[Dict[str, str]] = None,
                     content_type: str = "text/plain", attachments: Optional[List[Attachment]] = None,
-                    draft_folder: str = "Drafts") -> bool:
+                    draft_folder: str = "Drafts", mark_as_unread: bool = True) -> bool:
         """
         Update an existing draft email by replacing it with new content.
         
@@ -855,6 +861,7 @@ Subject: {email_message.subject}
             content_type: Content type ("text/plain" or "text/html")
             attachments: List of Attachment objects to include
             draft_folder: Name of the drafts folder (default: "Drafts")
+            mark_as_unread: Whether to mark the updated draft as unread (default: True)
             
         Returns:
             bool: True if draft was updated successfully, False otherwise
@@ -895,7 +902,8 @@ Subject: {email_message.subject}
                 custom_headers=custom_headers,
                 content_type=content_type,
                 attachments=attachments,
-                draft_folder=draft_folder
+                draft_folder=draft_folder,
+                mark_as_unread=mark_as_unread
             )
             
             if not draft_saved:
