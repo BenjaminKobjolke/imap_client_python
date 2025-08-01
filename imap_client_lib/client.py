@@ -72,7 +72,7 @@ class ImapClient:
                 self.client = None
                 
     def get_messages(self, search_criteria: List[str] = None, folder: str = 'INBOX', 
-                    limit: Optional[int] = None) -> List[Tuple[str, EmailMessage]]:
+                    limit: Optional[int] = None, include_attachments: bool = True) -> List[Tuple[str, EmailMessage]]:
         """
         Get messages from a folder based on search criteria.
         
@@ -80,6 +80,7 @@ class ImapClient:
             search_criteria: IMAP search criteria (default: ['UNSEEN'] for unread messages)
             folder: The folder to search in (default: 'INBOX')
             limit: Maximum number of messages to return (most recent first, default: unlimited)
+            include_attachments: Whether to process and include attachments (default: True)
             
         Returns:
             List[Tuple[str, EmailMessage]]: List of message IDs and parsed email messages
@@ -119,7 +120,7 @@ class ImapClient:
                 try:
                     raw_message = self.client.fetch([message_id], ['BODY.PEEK[]'])
                     message_data = raw_message[message_id][b'BODY[]']
-                    email_message = EmailMessage.from_bytes(str(message_id), message_data, self.logger)
+                    email_message = EmailMessage.from_bytes(str(message_id), message_data, self.logger, include_attachments)
                     messages.append((str(message_id), email_message))
                 except Exception as e:
                     self.logger.error(f"Error fetching message {message_id}: {e}")
@@ -129,27 +130,32 @@ class ImapClient:
             self.logger.error(f"Error getting messages: {e}")
             return []
             
-    def get_unread_messages(self) -> List[Tuple[str, EmailMessage]]:
+    def get_unread_messages(self, include_attachments: bool = True) -> List[Tuple[str, EmailMessage]]:
         """
         Get all unread messages from the inbox.
+        
+        Args:
+            include_attachments: Whether to process and include attachments (default: True)
         
         Returns:
             List[Tuple[str, EmailMessage]]: List of message IDs and parsed email messages
         """
-        return self.get_messages(['UNSEEN'], 'INBOX')
+        return self.get_messages(['UNSEEN'], 'INBOX', include_attachments=include_attachments)
         
-    def get_all_messages(self, folder: str = 'INBOX', limit: int = 100) -> List[Tuple[str, EmailMessage]]:
+    def get_all_messages(self, folder: str = 'INBOX', limit: int = 100, 
+                        include_attachments: bool = True) -> List[Tuple[str, EmailMessage]]:
         """
         Get all messages from a specific folder (most recent first).
         
         Args:
             folder: The folder to get messages from (default: 'INBOX')
             limit: Maximum number of messages to return (default: 100, set to None for unlimited)
+            include_attachments: Whether to process and include attachments (default: True)
             
         Returns:
             List[Tuple[str, EmailMessage]]: List of message IDs and parsed email messages
         """
-        return self.get_messages(['ALL'], folder, limit)
+        return self.get_messages(['ALL'], folder, limit, include_attachments)
             
     def mark_as_read(self, message_id: str) -> bool:
         """
