@@ -480,7 +480,8 @@ class ImapClient:
                      new_subject: Optional[str] = None, smtp_server: Optional[str] = None, 
                      smtp_port: int = 587, smtp_username: Optional[str] = None, 
                      smtp_password: Optional[str] = None, sender_email: Optional[str] = None,
-                     bcc_addresses: Optional[List[str]] = None, additional_message: str = "") -> bool:
+                     bcc_addresses: Optional[List[str]] = None, custom_headers: Optional[Dict[str, str]] = None,
+                     additional_message: str = "") -> bool:
         """
         Forward an email with an optional modified subject.
         
@@ -494,6 +495,7 @@ class ImapClient:
             smtp_password: SMTP password (if None, uses account password)
             sender_email: Fully-qualified sender email address (if None, uses smtp_username)
             bcc_addresses: List of email addresses to BCC (blind carbon copy)
+            custom_headers: Dictionary of custom headers to add to the forwarded email
             additional_message: Additional message to prepend to the forwarded email
             
         Returns:
@@ -533,6 +535,12 @@ class ImapClient:
             if bcc_addresses:
                 msg['Bcc'] = ', '.join(bcc_addresses)
             msg['Subject'] = new_subject
+            
+            # Add custom headers if provided
+            if custom_headers:
+                for header_name, header_value in custom_headers.items():
+                    msg[header_name] = header_value
+                    self.logger.debug(f"Added custom header: {header_name}: {header_value}")
             
             # Get original email body
             original_body_text = email_message.get_body('text/plain') or ""
