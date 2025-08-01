@@ -689,3 +689,232 @@ Subject: {email_message.subject}
         except Exception as e:
             self.logger.error(f"Error forwarding email: {e}")
             return False
+    
+    def save_draft(self, to_addresses: List[str], subject: str, body: str,
+                   from_email: Optional[str] = None, cc_addresses: Optional[List[str]] = None,
+                   bcc_addresses: Optional[List[str]] = None, custom_headers: Optional[Dict[str, str]] = None,
+                   content_type: str = "text/plain", attachments: Optional[List[Attachment]] = None,
+                   draft_folder: str = "Drafts") -> bool:
+        """
+        Save a draft email to the drafts folder.
+        
+        Args:
+            to_addresses: List of recipient email addresses
+            subject: Email subject line
+            body: Email body content
+            from_email: Sender email address (if None, uses account username)
+            cc_addresses: List of CC email addresses
+            bcc_addresses: List of BCC email addresses
+            custom_headers: Dictionary of custom headers to add
+            content_type: Content type ("text/plain" or "text/html")
+            attachments: List of Attachment objects to include
+            draft_folder: Name of the drafts folder (default: "Drafts")
+            
+        Returns:
+            bool: True if draft was saved successfully, False otherwise
+        """
+        if not self.client:
+            self.logger.error("Not connected to IMAP server")
+            return False
+            
+        try:
+            # Use account username if from_email not provided
+            if from_email is None:
+                from_email = self.account.username
+            
+            # Check if we have attachments to determine message structure
+            has_attachments = attachments and len(attachments) > 0
+            has_inline_images = has_attachments and any(att.is_inline and att.content_id for att in attachments)
+            
+            # Create multipart message - use 'related' if we have inline images
+            if has_inline_images:
+                msg = MIMEMultipart('related')
+            elif has_attachments:
+                msg = MIMEMultipart('mixed')
+            else:
+                msg = MIMEMultipart()
+            
+            # Set standard headers
+            msg['From'] = from_email
+            msg['To'] = ', '.join(to_addresses)
+            if cc_addresses:
+                msg['Cc'] = ', '.join(cc_addresses)
+            if bcc_addresses:
+                msg['Bcc'] = ', '.join(bcc_addresses)
+            msg['Subject'] = subject
+            
+            # Add custom headers if provided
+            if custom_headers:
+                for header_name, header_value in custom_headers.items():
+                    # Remove existing header if it exists to prevent duplicates
+                    if header_name in msg:
+                        del msg[header_name]
+                        self.logger.debug(f"Removed existing header: {header_name}")
+                    
+                    msg[header_name] = header_value
+                    self.logger.debug(f"Added custom header: {header_name}: {header_value}")
+            
+            # Add email content
+            if has_inline_images and content_type == "text/html":
+                # Create a multipart/alternative container for text and HTML versions
+                alternative = MIMEMultipart('alternative')
+                
+                # Add plain text version (simplified from HTML if needed)
+                alternative.attach(MIMEText(body, 'plain'))
+                alternative.attach(MIMEText(body, 'html'))
+                
+                # Attach the alternative part to the main message
+                msg.attach(alternative)
+            else:
+                # Simple content
+                msg.attach(MIMEText(body, content_type.split('/')[-1]))
+            
+            # Add attachments if provided
+            if attachments:
+                for attachment in attachments:
+                    if attachment.is_inline and attachment.content_id:
+                        # Handle inline images
+                        main_type, sub_type = attachment.content_type.split('/', 1)
+                        part = MIMEBase(main_type, sub_type)
+                        part.set_payload(attachment.data)
+                        encoders.encode_base64(part)
+                        part.add_header('Content-Disposition', 'inline', filename=attachment.filename)
+                        
+                        # Ensure Content-ID is properly formatted with angle brackets
+                        content_id = attachment.content_id
+                        if not content_id.startswith('<'):
+                            content_id = f'<{content_id}>'
+                        if not content_id.endswith('>'):
+                            content_id = f'{content_id[:-1]}>' if content_id.endswith('>') else f'{content_id}>'
+                        
+                        part.add_header('Content-ID', content_id)
+                        msg.attach(part)
+                        self.logger.debug(f"Attached inline image: {attachment.filename} with Content-ID: {content_id}")
+                    else:
+                        # Handle regular attachments
+                        part = MIMEBase('application', 'octet-stream')
+                        part.set_payload(attachment.data)
+                        encoders.encode_base64(part)
+                        part.add_header(
+                            'Content-Disposition',
+                            f'attachment; filename= {attachment.filename}'
+                        )
+                        msg.attach(part)
+                        self.logger.debug(f"Attached file: {attachment.filename}")
+            
+            # Check if draft folder exists
+            folders = self.client.list_folders()
+            folder_names = [f[2] for f in folders]
+            
+            if draft_folder not in folder_names:
+                self.logger.warning(f"Draft folder '{draft_folder}' does not exist, attempting to create it")
+                try:
+                    self.client.create_folder(draft_folder)
+                    self.logger.info(f"Created draft folder '{draft_folder}'")
+                except Exception as e:
+                    self.logger.error(f"Error creating draft folder '{draft_folder}': {e}")
+                    return False
+            
+            # Convert message to bytes
+            message_bytes = msg.as_bytes()
+            
+            # Append draft to folder with \Draft flag
+            self.logger.debug(f"Saving draft to folder '{draft_folder}'")
+            append_result = self.client.append(draft_folder, message_bytes, flags=[b'\\Draft'])
+            
+            if append_result:
+                self.logger.info(f"Successfully saved draft to folder '{draft_folder}'")
+                return True
+            else:
+                self.logger.error(f"Failed to save draft to folder '{draft_folder}'")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"Error saving draft: {e}")
+            return False
+    
+    def update_draft(self, message_id: str, to_addresses: List[str], subject: str, body: str,
+                    from_email: Optional[str] = None, cc_addresses: Optional[List[str]] = None,
+                    bcc_addresses: Optional[List[str]] = None, custom_headers: Optional[Dict[str, str]] = None,
+                    content_type: str = "text/plain", attachments: Optional[List[Attachment]] = None,
+                    draft_folder: str = "Drafts") -> bool:
+        """
+        Update an existing draft email by replacing it with new content.
+        
+        This method deletes the existing draft and creates a new one with updated content.
+        
+        Args:
+            message_id: The ID of the existing draft message to update
+            to_addresses: List of recipient email addresses
+            subject: Email subject line
+            body: Email body content
+            from_email: Sender email address (if None, uses account username)
+            cc_addresses: List of CC email addresses
+            bcc_addresses: List of BCC email addresses
+            custom_headers: Dictionary of custom headers to add
+            content_type: Content type ("text/plain" or "text/html")
+            attachments: List of Attachment objects to include
+            draft_folder: Name of the drafts folder (default: "Drafts")
+            
+        Returns:
+            bool: True if draft was updated successfully, False otherwise
+        """
+        if not self.client:
+            self.logger.error("Not connected to IMAP server")
+            return False
+            
+        try:
+            # First, verify the message exists and is in the draft folder
+            self.client.select_folder(draft_folder)
+            
+            # Check if the message exists
+            try:
+                message_data = self.client.fetch([int(message_id)], ['FLAGS'])
+                if int(message_id) not in message_data:
+                    self.logger.error(f"Draft message {message_id} not found in folder '{draft_folder}'")
+                    return False
+                    
+                # Verify it's actually a draft (has \Draft flag)
+                flags = message_data[int(message_id)][b'FLAGS']
+                if b'\\Draft' not in flags:
+                    self.logger.warning(f"Message {message_id} does not have \\Draft flag. Proceeding anyway.")
+                    
+            except Exception as e:
+                self.logger.error(f"Error checking draft message {message_id}: {e}")
+                return False
+            
+            # Save the new draft content
+            self.logger.debug(f"Creating updated draft content for message {message_id}")
+            draft_saved = self.save_draft(
+                to_addresses=to_addresses,
+                subject=subject,
+                body=body,
+                from_email=from_email,
+                cc_addresses=cc_addresses,
+                bcc_addresses=bcc_addresses,
+                custom_headers=custom_headers,
+                content_type=content_type,
+                attachments=attachments,
+                draft_folder=draft_folder
+            )
+            
+            if not draft_saved:
+                self.logger.error("Failed to save updated draft content")
+                return False
+            
+            # Delete the old draft
+            self.logger.debug(f"Deleting old draft message {message_id}")
+            try:
+                self.client.delete_messages([int(message_id)])
+                self.client.expunge()
+                self.logger.info(f"Successfully updated draft (deleted old message {message_id})")
+                return True
+            except Exception as e:
+                self.logger.error(f"Error deleting old draft message {message_id}: {e}")
+                # The new draft was saved, but we couldn't delete the old one
+                self.logger.warning("Updated draft was saved, but old draft could not be deleted")
+                return True  # Still consider this a success since new draft exists
+                
+        except Exception as e:
+            self.logger.error(f"Error updating draft: {e}")
+            return False
