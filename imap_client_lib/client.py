@@ -296,8 +296,13 @@ class ImapClient:
             
             # Add custom headers
             for header_name, header_value in custom_headers.items():
-                self.logger.debug(f"Adding custom header: {header_name}: {header_value}")
+                # Remove existing header if it exists to prevent duplicates
+                if header_name in parsed_message:
+                    del parsed_message[header_name]
+                    self.logger.debug(f"Removed existing header: {header_name}")
+                
                 parsed_message[header_name] = header_value
+                self.logger.debug(f"Added custom header: {header_name}: {header_value}")
             
             # Convert back to bytes
             modified_message_bytes = parsed_message.as_bytes()
@@ -539,6 +544,11 @@ class ImapClient:
             # Add custom headers if provided
             if custom_headers:
                 for header_name, header_value in custom_headers.items():
+                    # Remove existing header if it exists to prevent duplicates
+                    if header_name in msg:
+                        del msg[header_name]
+                        self.logger.debug(f"Removed existing header: {header_name}")
+                    
                     msg[header_name] = header_value
                     self.logger.debug(f"Added custom header: {header_name}: {header_value}")
             
