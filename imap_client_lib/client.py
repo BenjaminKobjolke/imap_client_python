@@ -383,14 +383,14 @@ class ImapClient:
     def list_folders(self) -> List[str]:
         """
         List all folders in the mailbox.
-        
+
         Returns:
             List[str]: List of folder names
         """
         if not self.client:
             self.logger.error("Not connected to IMAP server")
             return []
-            
+
         try:
             folders = self.client.list_folders()
             folder_names = [f[2] for f in folders]
@@ -398,6 +398,75 @@ class ImapClient:
         except Exception as e:
             self.logger.error(f"Error listing folders: {e}")
             return []
+
+    def idle_start(self, folder: str = 'INBOX') -> bool:
+        """
+        Start IDLE mode on a folder.
+
+        IDLE mode allows the server to push notifications about new emails
+        instead of requiring polling.
+
+        Args:
+            folder: The folder to monitor (default: 'INBOX')
+
+        Returns:
+            bool: True if IDLE mode was started successfully, False otherwise
+        """
+        if not self.client:
+            self.logger.error("Not connected to IMAP server")
+            return False
+
+        try:
+            self.client.select_folder(folder)
+            self.client.idle()
+            self.logger.debug(f"Started IDLE mode on folder '{folder}'")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error starting IDLE mode: {e}")
+            return False
+
+    def idle_check(self, timeout: int = 30) -> List[Tuple[int, bytes]]:
+        """
+        Check for IDLE responses.
+
+        This method blocks until either a response is received or the timeout expires.
+
+        Args:
+            timeout: Maximum time to wait in seconds (default: 30)
+
+        Returns:
+            List[Tuple[int, bytes]]: List of (msg_id, event) tuples.
+            Common events include b'EXISTS' (new mail) and b'EXPUNGE' (deleted mail).
+        """
+        if not self.client:
+            self.logger.error("Not connected to IMAP server")
+            return []
+
+        try:
+            responses = self.client.idle_check(timeout=timeout)
+            if responses:
+                self.logger.debug(f"IDLE received responses: {responses}")
+            return responses
+        except Exception as e:
+            self.logger.error(f"Error checking IDLE: {e}")
+            return []
+
+    def idle_done(self) -> None:
+        """
+        Exit IDLE mode.
+
+        This must be called before performing any other IMAP operations
+        after starting IDLE mode.
+        """
+        if not self.client:
+            self.logger.error("Not connected to IMAP server")
+            return
+
+        try:
+            self.client.idle_done()
+            self.logger.debug("Exited IDLE mode")
+        except Exception as e:
+            self.logger.error(f"Error exiting IDLE mode: {e}")
             
     def save_attachment(self, attachment: Attachment, target_path: str, 
                        sanitize_filename: bool = True) -> str:
