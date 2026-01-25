@@ -9,6 +9,7 @@ A simple and reusable IMAP client library for Python that makes it easy to work 
 - Email message parsing with attachment handling
 - Folder management (create, move, delete)
 - Flexible message processing with callbacks
+- IMAP IDLE support for real-time email notifications
 - Built-in logging support
 - Type hints for better IDE support
 
@@ -124,6 +125,36 @@ client.move_to_folder(message_id, "Archive")
 client.delete_message(message_id)
 ```
 
+### IDLE Mode (Real-time Notifications)
+
+IMAP IDLE allows the client to receive real-time notifications when new emails arrive, without polling:
+
+```python
+# Connect and start IDLE mode on INBOX
+if client.connect():
+    client.idle_start("INBOX")
+
+    try:
+        while True:
+            # Check for new messages (blocks until timeout or event)
+            events = client.idle_check(timeout=300)  # 5 minute timeout
+
+            for event in events:
+                print(f"IDLE event: {event}")
+                # Event might be something like (1, b'EXISTS') for new mail
+
+            # Optionally exit IDLE to process messages, then restart
+            client.idle_done()
+            messages = client.get_unread_messages()
+            for msg_id, email_message in messages:
+                print(f"New email: {email_message.subject}")
+            client.idle_start("INBOX")
+
+    except KeyboardInterrupt:
+        client.idle_done()
+        client.disconnect()
+```
+
 ### Using with Logging
 
 ```python
@@ -167,6 +198,9 @@ Main methods:
 - `list_folders()`: List all available folders
 - `save_attachment(attachment, target_path)`: Save an attachment to disk
 - `process_messages_with_callback(callback, ...)`: Process messages with custom logic
+- `idle_start(folder)`: Start IDLE mode on a folder for real-time notifications
+- `idle_check(timeout)`: Check for IDLE responses (blocking, returns list of events)
+- `idle_done()`: Exit IDLE mode
 
 ### EmailMessage
 
