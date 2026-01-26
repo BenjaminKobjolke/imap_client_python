@@ -46,10 +46,11 @@ class ImapClient:
         try:
             self.logger.info(f"Connecting to {self.account.server} for account {self.account.name}")
             self.client = IMAPClient(
-                self.account.server, 
-                port=self.account.port, 
-                use_uid=True, 
-                ssl=self.account.use_ssl
+                self.account.server,
+                port=self.account.port,
+                use_uid=True,
+                ssl=self.account.use_ssl,
+                timeout=300  # 5 minute socket timeout
             )
             self.client.login(self.account.username, self.account.password)
             self.logger.info(f"Successfully connected to {self.account.server}")
@@ -374,6 +375,7 @@ class ImapClient:
             
         try:
             self.client.delete_messages([int(message_id)])
+            self.client.expunge()
             self.logger.info(f"Deleted message {message_id}")
             return True
         except Exception as e:
@@ -449,7 +451,7 @@ class ImapClient:
             return responses
         except Exception as e:
             self.logger.error(f"Error checking IDLE: {e}")
-            return []
+            raise  # Propagate to allow caller to reconnect
 
     def idle_done(self) -> None:
         """
