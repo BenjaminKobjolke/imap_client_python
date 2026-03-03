@@ -157,7 +157,30 @@ class ImapClient:
             List[Tuple[str, EmailMessage]]: List of message IDs and parsed email messages
         """
         return self.get_messages(['ALL'], folder, limit, include_attachments)
-            
+
+    def get_folder_message_count(self, folder: str = 'INBOX') -> Optional[int]:
+        """
+        Get the number of messages in a folder without fetching them.
+
+        Uses IMAP SELECT which returns the EXISTS count — very fast
+        because no message data is transferred.
+
+        Args:
+            folder: The folder to check (default: 'INBOX')
+
+        Returns:
+            The message count, or None if the folder could not be selected.
+        """
+        if not self.client:
+            self.logger.error("Not connected to IMAP server")
+            return None
+        try:
+            info = self.client.select_folder(folder)
+            return info.get(b'EXISTS', None)
+        except Exception as e:
+            self.logger.error(f"Error getting message count for '{folder}': {e}")
+            return None
+
     def mark_as_read(self, message_id: str) -> bool:
         """
         Mark a message as read.
