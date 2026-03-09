@@ -20,10 +20,10 @@ class Account:
     def from_dict(cls, data: dict) -> 'Account':
         """
         Create an Account instance from a dictionary.
-        
+
         Args:
             data: Dictionary containing account configuration
-            
+
         Returns:
             Account: New Account instance
         """
