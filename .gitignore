@@ -70,3 +70,7 @@ Thumbs.db
 downloaded_attachments/
 important_attachments/
 *.log
+
+# Code analysis
+tools/analyze_code_config.bat
+code_analysis_results/
