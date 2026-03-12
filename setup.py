@@ -36,6 +36,7 @@ setup(
         "dev": [
             "pytest>=6.0",
             "pytest-cov",
+            "python-dotenv",
             "black",
             "flake8",
         ]
