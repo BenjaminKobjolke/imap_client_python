@@ -217,6 +217,63 @@ class ImapClient(SmtpMixin, DraftMixin, MessageOpsMixin):
             ['ALL'], folder, limit, include_attachments
         )
 
+    def get_message_by_id(
+        self,
+        message_id: str,
+        folder: str = 'INBOX',
+        include_attachments: bool = True,
+    ) -> Optional[Tuple[str, EmailMessage]]:
+        """Fetch a single message by its UID directly.
+
+        Avoids SEARCH ALL — fetches the UID directly.
+
+        Args:
+            message_id: The UID of the message
+            folder: The folder the message is in
+            include_attachments: Whether to include
+                attachments
+
+        Returns:
+            (message_id, EmailMessage) tuple, or None
+        """
+        if not self.client:
+            self.logger.error(
+                "Not connected to IMAP server"
+            )
+            return None
+
+        try:
+            self.client.select_folder(folder)
+            uid = int(message_id)
+            raw_message = self.client.fetch(
+                [uid], ['BODY.PEEK[]', 'FLAGS'],
+            )
+            if uid not in raw_message:
+                self.logger.info(
+                    f"Message {message_id} not found "
+                    f"in {folder}"
+                )
+                return None
+            message_data = raw_message[uid][b'BODY[]']
+            flags = raw_message[uid].get(
+                b'FLAGS', ()
+            )
+            keywords = _extract_keywords(flags)
+            email_message = EmailMessage.from_bytes(
+                str(uid),
+                message_data,
+                self.logger,
+                include_attachments,
+                keywords=keywords,
+            )
+            return (str(uid), email_message)
+        except Exception as e:
+            self.logger.error(
+                f"Error fetching message "
+                f"{message_id}: {e}"
+            )
+            return None
+
     def get_folder_message_count(
         self, folder: str = 'INBOX',
     ) -> Optional[int]:
