@@ -1,8 +1,32 @@
 """
 Mixin providing message management operations.
 """
-from typing import Optional, Dict
+from typing import List, Optional, Dict
 import email
+
+
+def _extract_keywords(flags: tuple) -> List[str]:
+    """Extract non-system keywords from IMAP flags.
+
+    Filters out standard IMAP system flags (starting with
+    backslash) and returns only custom keywords/tags.
+
+    Args:
+        flags: Tuple of flags from IMAP server
+
+    Returns:
+        List of keyword strings
+    """
+    keywords = []
+    for flag in flags:
+        flag_str = (
+            flag.decode()
+            if isinstance(flag, bytes)
+            else str(flag)
+        )
+        if not flag_str.startswith('\\'):
+            keywords.append(flag_str)
+    return keywords
 
 
 class MessageOpsMixin:
@@ -65,6 +89,114 @@ class MessageOpsMixin:
             self.logger.error(
                 f"Error marking message "
                 f"{message_id} as unread: {e}"
+            )
+            return False
+
+    def get_keywords(
+        self, message_id: str,
+    ) -> List[str]:
+        """Get custom keywords (tags) on a message.
+
+        Returns only non-system flags (e.g. Thunderbird
+        tags like $label1, $label2).
+
+        Args:
+            message_id: The ID of the message
+
+        Returns:
+            List of keyword strings, empty on error
+        """
+        if not self.client:
+            self.logger.error(
+                "Not connected to IMAP server"
+            )
+            return []
+
+        try:
+            result = self.client.fetch(
+                [int(message_id)], ['FLAGS']
+            )
+            flags = result[int(message_id)][b'FLAGS']
+            keywords = _extract_keywords(flags)
+            self.logger.debug(
+                f"Keywords for message {message_id}: "
+                f"{keywords}"
+            )
+            return keywords
+        except Exception as e:
+            self.logger.error(
+                f"Error getting keywords for message "
+                f"{message_id}: {e}"
+            )
+            return []
+
+    def add_keyword(
+        self, message_id: str, keyword: str,
+    ) -> bool:
+        """Add a keyword (tag) to a message.
+
+        Args:
+            message_id: The ID of the message
+            keyword: The keyword to add (e.g. '$label1')
+
+        Returns:
+            bool: True if successful
+        """
+        if not self.client:
+            self.logger.error(
+                "Not connected to IMAP server"
+            )
+            return False
+
+        try:
+            self.client.add_flags(
+                [int(message_id)],
+                [keyword.encode()],
+            )
+            self.logger.info(
+                f"Added keyword '{keyword}' to "
+                f"message {message_id}"
+            )
+            return True
+        except Exception as e:
+            self.logger.error(
+                f"Error adding keyword '{keyword}' "
+                f"to message {message_id}: {e}"
+            )
+            return False
+
+    def remove_keyword(
+        self, message_id: str, keyword: str,
+    ) -> bool:
+        """Remove a keyword (tag) from a message.
+
+        Args:
+            message_id: The ID of the message
+            keyword: The keyword to remove (e.g. '$label1')
+
+        Returns:
+            bool: True if successful
+        """
+        if not self.client:
+            self.logger.error(
+                "Not connected to IMAP server"
+            )
+            return False
+
+        try:
+            self.client.remove_flags(
+                [int(message_id)],
+                [keyword.encode()],
+            )
+            self.logger.info(
+                f"Removed keyword '{keyword}' from "
+                f"message {message_id}"
+            )
+            return True
+        except Exception as e:
+            self.logger.error(
+                f"Error removing keyword '{keyword}' "
+                f"from message {message_id}: {e}"
             )
             return False
 

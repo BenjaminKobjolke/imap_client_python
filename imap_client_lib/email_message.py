@@ -1,7 +1,7 @@
 """
 Email message model for representing email data.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional
 import email
 from email.message import Message
@@ -32,6 +32,7 @@ class EmailMessage:
     date: str
     attachments: List[Attachment]
     raw_message: Message
+    keywords: List[str] = field(default_factory=list)
 
     def get_body(self, content_type: str = "text/plain") -> Optional[str]:
         """
@@ -79,6 +80,7 @@ class EmailMessage:
         cls, message_id: str, message_data: bytes,
         logger: Optional[logging.Logger] = None,
         include_attachments: bool = True,
+        keywords: Optional[List[str]] = None,
     ) -> 'EmailMessage':
         """
         Create an EmailMessage instance from raw message bytes.
@@ -88,6 +90,7 @@ class EmailMessage:
             message_data: The raw message data
             logger: Optional logger for debug information
             include_attachments: Whether to include attachments
+            keywords: Optional list of IMAP keywords (tags)
 
         Returns:
             EmailMessage: New EmailMessage instance
@@ -265,5 +268,6 @@ class EmailMessage:
             subject=subject,
             date=date,
             attachments=attachments,
-            raw_message=msg
+            raw_message=msg,
+            keywords=keywords or [],
         )

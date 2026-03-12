@@ -12,7 +12,7 @@ from .account import Account
 from .email_message import EmailMessage, Attachment
 from .smtp_mixin import SmtpMixin
 from .draft_mixin import DraftMixin
-from .message_ops_mixin import MessageOpsMixin
+from .message_ops_mixin import MessageOpsMixin, _extract_keywords
 
 
 class ImapClient(SmtpMixin, DraftMixin, MessageOpsMixin):
@@ -146,16 +146,22 @@ class ImapClient(SmtpMixin, DraftMixin, MessageOpsMixin):
             for message_id in message_ids:
                 try:
                     raw_message = self.client.fetch(
-                        [message_id], ['BODY.PEEK[]']
+                        [message_id],
+                        ['BODY.PEEK[]', 'FLAGS'],
                     )
                     message_data = (
                         raw_message[message_id][b'BODY[]']
                     )
+                    flags = raw_message[message_id].get(
+                        b'FLAGS', ()
+                    )
+                    keywords = _extract_keywords(flags)
                     email_message = EmailMessage.from_bytes(
                         str(message_id),
                         message_data,
                         self.logger,
                         include_attachments,
+                        keywords=keywords,
                     )
                     messages.append(
                         (str(message_id), email_message)
